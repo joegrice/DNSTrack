@@ -21,7 +21,7 @@ COPY --from=builder /build/config.yaml .
 
 RUN mkdir -p /app/data
 
-EXPOSE 8080
+EXPOSE 8420
 
 ENTRYPOINT ["./dnstrack"]
 CMD ["-config", "/app/config.yaml", "-db", "/app/data/dnstrack.db", "-frontend", "/app/web/dist"]

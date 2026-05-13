@@ -2,6 +2,8 @@
 
 Self-hosted DNS speed tracker. Monitors DNS resolution times across multiple providers and visualizes performance over time.
 
+![Screenshot](screenshot.png)
+
 ## Supported DNS Protocols
 
 - UDP on port 53

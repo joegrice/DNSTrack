@@ -1,6 +1,6 @@
 services:
   dnstrack:
-    build: .
+    image: ghcr.io/joegrice/dnstrack:latest
     container_name: dnstrack
     ports:
       - "8420:8420"

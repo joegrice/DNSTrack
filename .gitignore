@@ -1,0 +1,8 @@
+# Mounted data directory
+data/
+
+# Go build artifacts
+/dnstrack
+
+# Temporary files
+/tmp/

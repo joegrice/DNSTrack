@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DNSTrack</title>
+<script src="chart.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0f0f23;color:#e0e0e0;min-height:100vh}
+nav{background:#1a1a2e;border-bottom:1px solid #2a2a4a;padding:0 1.5rem;display:flex;align-items:center;height:56px;gap:2rem}
+nav h1{font-size:1.2rem;color:#00d4ff}
+nav a{color:#a0a0c0;text-decoration:none;font-size:0.9rem;padding:0.25rem 0.5rem;border-radius:4px;transition:all 0.2s}
+nav a:hover,nav a.active{color:#00d4ff;background:rgba(0,212,255,0.1)}
+main{padding:1.5rem;max-width:1200px;margin:0 auto}
+.page{display:none}
+.page.active{display:block}
+.btn{background:#00d4ff;color:#0f0f23;border:none;padding:0.5rem 1rem;border-radius:6px;cursor:pointer;font-size:0.85rem;font-weight:600}
+.btn:hover{background:#00b8e0}
+.btn-sm{padding:0.3rem 0.7rem;font-size:0.8rem}
+.btn-outline{background:transparent;color:#00d4ff;border:1px solid #00d4ff}
+.btn-outline:hover{background:rgba(0,212,255,0.1)}
+.card{background:#1a1a2e;border:1px solid #2a2a4a;border-radius:8px;padding:0.75rem;margin-bottom:0.75rem}
+.card-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem}
+.card-header h3{font-size:0.95rem;color:#00d4ff}
+.card-ips{font-size:0.75rem;color:#666;display:inline}
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:0.35rem;margin-bottom:0.5rem}
+.stat{text-align:center;padding:0.35rem;background:#0f0f23;border-radius:6px}
+.stat-value{font-size:0.95rem;font-weight:700;color:#e0e0e0}
+.stat-value.green{color:#4caf50}
+.stat-value.yellow{color:#ff9800}
+.stat-value.red{color:#f44336}
+.success-rate{font-size:0.85rem;color:#888}
+.success-rate.good{color:#4caf50}
+.success-rate.warn{color:#ff9800}
+.success-rate.bad{color:#f44336}
+.hostname-toggle{background:transparent;color:#00d4ff;border:none;cursor:pointer;font-size:0.8rem;padding:0.25rem 0}
+.hostname-toggle:hover{text-decoration:underline}
+.hostname-table{width:100%;border-collapse:collapse;margin-top:0.5rem;display:none}
+.hostname-table.show{display:table}
+.hostname-table th,.hostname-table td{padding:0.35rem 0.75rem;text-align:left;font-size:0.8rem;border-bottom:1px solid #2a2a4a}
+.hostname-table th{color:#888;text-transform:uppercase;font-size:0.7rem}
+.hostname-table td{color:#ccc}
+#refresh-btn{margin-bottom:1rem}
+.toolbar{display:flex;gap:1rem;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap}
+.toolbar select,.toolbar input{background:#1a1a2e;border:1px solid #2a2a4a;color:#e0e0e0;padding:0.4rem 0.75rem;border-radius:6px;font-size:0.85rem}
+.toolbar select:focus{outline:none;border-color:#00d4ff}
+.chart-container{background:#1a1a2e;border:1px solid #2a2a4a;border-radius:8px;padding:1rem;height:400px}
+#runs-table{width:100%;border-collapse:collapse}
+#runs-table th,#runs-table td{padding:0.35rem 0.75rem;text-align:left;border-bottom:1px solid #2a2a4a;font-size:0.8rem}
+#runs-table th{color:#888;text-transform:uppercase;font-size:0.7rem}
+#runs-table tr:hover{background:rgba(0,212,255,0.03)}
+#runs-table a{color:#00d4ff;text-decoration:none}
+#runs-table a:hover{text-decoration:underline}
+.loading{text-align:center;padding:3rem;color:#888}
+.run-timestamp{color:#888;font-size:0.9rem;margin-bottom:1.5rem}
+.empty-state{text-align:center;padding:4rem;color:#666}
+.empty-state h3{margin-bottom:0.5rem}
+@media(max-width:768px){.stats-grid{grid-template-columns:repeat(2,1fr)}.toolbar{flex-direction:column;align-items:stretch}}
+</style>
+</head>
+<body>
+<nav>
+  <h1>DNSTrack</h1>
+  <a href="#dashboard" class="active" data-page="dashboard">Dashboard</a>
+  <a href="#history" data-page="history">History</a>
+  <a href="#runs" data-page="runs">Runs</a>
+  <a href="#settings" data-page="settings">Settings</a>
+</nav>
+
+<main>
+  <div id="dashboard" class="page active">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+      <h2 style="font-size:1.1rem">Latest Test Run</h2>
+      <button class="btn" id="refresh-btn" onclick="runTest()">Run Test</button>
+    </div>
+    <div id="dashboard-content"></div>
+  </div>
+
+  <div id="history" class="page">
+    <h2 style="font-size:1.1rem;margin-bottom:1rem">History</h2>
+    <div class="toolbar">
+      <select id="history-provider" onchange="loadHistory()"></select>
+      <select id="history-metric" onchange="loadHistory()">
+        <option value="avg_ms" selected>Avg</option>
+        <option value="min_ms">Min</option>
+        <option value="max_ms">Max</option>
+        <option value="median_ms">Median</option>
+      </select>
+      <select id="history-bucket" onchange="loadHistory()">
+        <option value="5">5 min</option>
+        <option value="15">15 min</option>
+        <option value="60" selected>1 hour</option>
+        <option value="360">6 hours</option>
+        <option value="1440">24 hours</option>
+      </select>
+      <select id="history-period" onchange="loadHistory()">
+        <option value="24">Last 24 hours</option>
+        <option value="168" selected>Last 7 days</option>
+        <option value="720">Last 30 days</option>
+        <option value="2160">Last 90 days</option>
+      </select>
+    </div>
+    <div class="chart-container">
+      <canvas id="history-chart"></canvas>
+    </div>
+  </div>
+
+  <div id="runs" class="page">
+    <h2 style="font-size:1.1rem;margin-bottom:1rem">Past Runs</h2>
+    <div id="runs-content"></div>
+  </div>
+
+  <div id="settings" class="page">
+    <h2 style="font-size:1.1rem;margin-bottom:1rem">Settings</h2>
+    <div id="settings-content"></div>
+  </div>
+</main>
+
+<script>
+const API = '/api';
+
+let historyChart = null;
+
+// Routing
+function navigate(hash) {
+  const page = hash.replace('#', '') || 'dashboard';
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('nav a').forEach(a => a.classList.remove('active'));
+
+  const targetPage = document.getElementById(page);
+  if (targetPage) targetPage.classList.add('active');
+
+  const targetLink = document.querySelector(`nav a[data-page="${page}"]`);
+  if (targetLink) targetLink.classList.add('active');
+
+  if (page === 'dashboard') loadDashboard();
+  if (page === 'history') loadHistory();
+  if (page === 'runs') loadRuns();
+  if (page === 'settings') loadSettings();
+}
+
+window.addEventListener('hashchange', () => navigate(location.hash));
+window.addEventListener('load', () => navigate(location.hash || '#dashboard'));
+
+// Dashboard
+async function loadDashboard() {
+  const content = document.getElementById('dashboard-content');
+  content.innerHTML = '<div class="loading">Loading...</div>';
+
+  try {
+    const resp = await fetch(`${API}/runs/latest`);
+    const data = await resp.json();
+
+    if (data.message) {
+      content.innerHTML = `<div class="empty-state"><h3>No results yet</h3><p>Click "Run Test" to start</p></div>`;
+      return;
+    }
+
+    content.innerHTML = `
+      <div class="run-timestamp">Run #${data.run_id} &mdash; ${formatDate(data.created_at)}</div>
+      ${data.providers.map(p => renderProviderCard(p)).join('')}
+    `;
+
+    attachToggleHandlers();
+  } catch (err) {
+    content.innerHTML = `<div class="empty-state"><h3>Error loading data</h3><p>${err.message}</p></div>`;
+  }
+}
+
+async function runTest() {
+  const btn = document.getElementById('refresh-btn');
+  const content = document.getElementById('dashboard-content');
+
+  btn.disabled = true;
+  btn.textContent = 'Running...';
+  content.innerHTML = '<div class="loading">Running test...</div>';
+
+  try {
+    await fetch(`${API}/test`, { method: 'POST' });
+    await new Promise(r => setTimeout(r, 3000));
+
+    const resp = await fetch(`${API}/runs/latest`);
+    const data = await resp.json();
+
+    if (data.message) {
+      content.innerHTML = `<div class="empty-state"><h3>No results yet</h3><p>Click "Run Test" to start</p></div>`;
+      return;
+    }
+
+    content.innerHTML = `
+      <div class="run-timestamp">Run #${data.run_id} &mdash; ${formatDate(data.created_at)}</div>
+      ${data.providers.map(p => renderProviderCard(p)).join('')}
+    `;
+
+    attachToggleHandlers();
+  } catch (err) {
+    content.innerHTML = `<div class="empty-state"><h3>Error loading data</h3><p>${err.message}</p></div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Run Test';
+  }
+}
+
+function attachToggleHandlers() {
+  document.querySelectorAll('.hostname-toggle').forEach(btn => {
+    btn.onclick = () => {
+      const table = btn.parentElement.querySelector('.hostname-table');
+      table.classList.toggle('show');
+      btn.textContent = table.classList.contains('show') ? 'Hide per-hostname breakdown ▲' : 'Show per-hostname breakdown ▼';
+    };
+  });
+}
+
+function renderProviderCard(p) {
+  const stats = p.stats || {};
+  const ips = (p.ips || []).join(', ');
+  const dohUrl = p.doh_url || '';
+  const meta = [ips, dohUrl ? `DoH: ${dohUrl}` : ''].filter(Boolean).join('  ·  ');
+
+  const successClass = p.total_tested === p.total_succeeded ? 'good' : p.total_succeeded === 0 ? 'bad' : 'warn';
+
+  return `
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <h3>${esc(p.provider)}</h3>
+          ${meta ? `<div class="card-ips">${esc(meta)}</div>` : ''}
+        </div>
+        <div>
+          <span class="success-rate ${successClass}">${p.total_succeeded}/${p.total_tested}</span>
+        </div>
+      </div>
+      <div class="stats-grid">
+        <div class="stat"><div class="stat-label">Min</div><div class="stat-value green">${stats.min_ms?.toFixed(2) || '—'}</div></div>
+        <div class="stat"><div class="stat-label">Median</div><div class="stat-value">${stats.median_ms?.toFixed(2) || '—'}</div></div>
+        <div class="stat"><div class="stat-label">Avg</div><div class="stat-value">${stats.avg_ms?.toFixed(2) || '—'}</div></div>
+        <div class="stat"><div class="stat-label">Max</div><div class="stat-value ${stats.max_ms > 100 ? 'red' : 'yellow'}">${stats.max_ms?.toFixed(2) || '—'}</div></div>
+      </div>
+      <div>
+        <button class="hostname-toggle">Show per-hostname breakdown ▼</button>
+        <table class="hostname-table">
+          <thead><tr><th>Domain</th><th>Response Time</th></tr></thead>
+          <tbody>
+            ${(p.per_hostname || []).map(h => `
+              <tr><td>${esc(h.domain)}</td><td>${h.response_time_ms.toFixed(2)} ms</td></tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+// History
+const PROVIDER_COLORS = ['#00d4ff', '#4caf50', '#ff9800', '#f44336', '#e040fb', '#ffeb3b', '#00e676', '#448aff'];
+
+const METRIC_LABELS = {
+  min_ms: 'Min',
+  avg_ms: 'Avg',
+  max_ms: 'Max',
+  median_ms: 'Median'
+};
+
+async function loadHistory() {
+  const providerSelect = document.getElementById('history-provider');
+  const period = document.getElementById('history-period').value;
+  const metric = document.getElementById('history-metric').value;
+  const bucket = document.getElementById('history-bucket').value;
+
+  if (!providerSelect.value) {
+    try {
+      const resp = await fetch(`${API}/providers`);
+      const providers = await resp.json();
+      providerSelect.innerHTML = `<option value="all">All</option>` +
+        providers.map(p => `<option value="${esc(p.Name)}">${esc(p.Name)}</option>`).join('');
+      if (providers.length > 0) providerSelect.value = providers[0].Name;
+    } catch(e) {}
+  }
+
+  const provider = providerSelect.value;
+  if (!provider) return;
+
+  const resp = await fetch(`${API}/history?provider=${encodeURIComponent(provider)}&hours=${period}&bucket=${bucket}`);
+  const data = await resp.json();
+
+  if (historyChart) historyChart.destroy();
+
+  const ctx = document.getElementById('history-chart').getContext('2d');
+  const metricLabel = METRIC_LABELS[metric] || 'Avg';
+
+  if (provider === 'all') {
+    const allLabels = collectLabels(Object.values(data));
+    const datasets = Object.entries(data).map(([name, points], i) => {
+      const timeMap = {};
+      points.forEach(p => { timeMap[p.time] = p[metric]; });
+      return {
+        label: name,
+        data: allLabels.map(t => timeMap[t] !== undefined ? timeMap[t] : null),
+        borderColor: PROVIDER_COLORS[i % PROVIDER_COLORS.length],
+        backgroundColor: 'transparent',
+        tension: 0.3,
+        pointRadius: 2,
+        pointHoverRadius: 5,
+        spanGaps: false
+      };
+    });
+
+    historyChart = new Chart(ctx, {
+      type: 'line',
+      data: { labels: allLabels, datasets },
+      options: makeChartOptions(`Response Time (ms) — ${metricLabel}`)
+    });
+  } else {
+    const labels = data.map(d => d.time);
+    const values = data.map(d => d[metric] || null);
+
+    historyChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: `${provider} — ${metricLabel}`,
+          data: values,
+          borderColor: '#00d4ff',
+          backgroundColor: 'rgba(0,212,255,0.1)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 2,
+          pointHoverRadius: 5
+        }]
+      },
+      options: makeChartOptions(`Response Time (ms) — ${metricLabel}`)
+    });
+  }
+}
+
+function collectLabels(providerDataList) {
+  const seen = new Set();
+  const labels = [];
+  for (const points of providerDataList) {
+    for (const p of points) {
+      if (!seen.has(p.time)) {
+        seen.add(p.time);
+        labels.push(p.time);
+      }
+    }
+  }
+  labels.sort();
+  return labels;
+}
+
+function makeChartOptions(yTitle) {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        display: true,
+        labels: { color: '#e0e0e0', font: { size: 11 } }
+      }
+    },
+    scales: {
+      x: {
+        title: { display: true, text: 'Time', color: '#888' },
+        ticks: { color: '#888', maxTicksLimit: 12 },
+        grid: { color: '#2a2a4a' }
+      },
+      y: {
+        title: { display: true, text: yTitle, color: '#888' },
+        ticks: { color: '#888', callback: v => v + ' ms' },
+        grid: { color: '#2a2a4a' },
+        beginAtZero: true
+      }
+    }
+  };
+}
+
+// Runs list
+let runsPage = 1;
+const PAGE_SIZE = 12;
+
+async function loadRuns(page = 1) {
+  const content = document.getElementById('runs-content');
+  content.innerHTML = '<div class="loading">Loading...</div>';
+
+  try {
+    const offset = (page - 1) * PAGE_SIZE;
+    const resp = await fetch(`${API}/runs?limit=${PAGE_SIZE}&offset=${offset}`);
+    const data = await resp.json();
+    const runs = data.runs || [];
+    const total = data.total || 0;
+    runsPage = page;
+    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+    if (!runs.length) {
+      content.innerHTML = '<div class="empty-state"><h3>No runs yet</h3></div>';
+      return;
+    }
+
+    content.innerHTML = `
+      <table id="runs-table">
+        <thead><tr><th>Run #</th><th>Date</th><th>Providers Tested</th></tr></thead>
+        <tbody>
+          ${runs.map(r => `
+            <tr>
+              <td><a href="#" onclick="viewRun(${r.id});return false">#${r.id}</a></td>
+              <td>${formatDate(r.created_at)}</td>
+              <td>${r.provider_count}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+      <div style="display:flex;justify-content:center;align-items:center;gap:1rem;margin-top:1rem">
+        <button class="btn btn-outline btn-sm" onclick="loadRuns(${page - 1})" ${page <= 1 ? 'disabled' : ''}>Prev</button>
+        <span style="color:#888;font-size:0.85rem">Page ${page} of ${totalPages} (${total} runs)</span>
+        <button class="btn btn-outline btn-sm" onclick="loadRuns(${page + 1})" ${page >= totalPages ? 'disabled' : ''}>Next</button>
+      </div>
+    `;
+  } catch (err) {
+    content.innerHTML = '<div class="empty-state"><h3>Error</h3></div>';
+  }
+}
+
+// Settings
+async function loadSettings() {
+  const content = document.getElementById('settings-content');
+  content.innerHTML = '<div class="loading">Loading...</div>';
+
+  try {
+    const resp = await fetch(`${API}/settings`);
+    const data = await resp.json();
+
+    content.innerHTML = `
+      <div class="card">
+        <div style="margin-bottom:1rem">
+          <label style="display:block;font-size:0.85rem;color:#888;margin-bottom:0.5rem">Run Interval (cron expression)</label>
+          <div style="display:flex;gap:0.5rem;align-items:center">
+            <input type="text" id="cron-input" value="${esc(data.cron)}" style="background:#0f0f23;border:1px solid #2a2a4a;color:#e0e0e0;padding:0.5rem 0.75rem;border-radius:6px;font-size:0.9rem;font-family:monospace;flex:1;max-width:300px">
+            <button class="btn" onclick="saveSettings()">Save</button>
+          </div>
+        </div>
+        <div style="font-size:0.8rem;color:#666;margin-top:0.75rem">
+          <p>Examples: <code>@every 1h</code>, <code>@every 30m</code>, <code>0 * * * *</code>, <code>*/15 * * * *</code></p>
+        </div>
+        <div id="settings-msg" style="margin-top:0.75rem;font-size:0.85rem"></div>
+      </div>
+    `;
+  } catch (err) {
+    content.innerHTML = `<div class="empty-state"><h3>Error loading settings</h3><p>${err.message}</p></div>`;
+  }
+}
+
+async function saveSettings() {
+  const input = document.getElementById('cron-input');
+  const msg = document.getElementById('settings-msg');
+  const cronVal = input.value.trim();
+
+  if (!cronVal) {
+    msg.innerHTML = '<span style="color:#f44336">Cron expression is required</span>';
+    return;
+  }
+
+  try {
+    const resp = await fetch(`${API}/settings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cron: cronVal })
+    });
+
+    const data = await resp.json();
+
+    if (resp.ok) {
+      msg.innerHTML = '<span style="color:#4caf50">Interval updated successfully</span>';
+    } else {
+      msg.innerHTML = `<span style="color:#f44336">${esc(data.error || 'Failed to update')}</span>`;
+    }
+  } catch (err) {
+    msg.innerHTML = `<span style="color:#f44336">${esc(err.message)}</span>`;
+  }
+}
+window.viewRun = async function(runId) {
+  const content = document.getElementById('runs-content');
+  content.innerHTML = '<div class="loading">Loading...</div>';
+
+  try {
+    const resp = await fetch(`${API}/runs/${runId}`);
+    const data = await resp.json();
+
+    content.innerHTML = `
+      <button class="btn btn-outline btn-sm" onclick="loadRuns()" style="margin-bottom:1rem">← Back</button>
+      <div class="run-timestamp">Run #${data.run_id} &mdash; ${formatDate(data.created_at)}</div>
+      ${data.providers.map(p => renderProviderCard(p)).join('')}
+    `;
+
+    document.querySelectorAll('.hostname-toggle').forEach(btn => {
+      btn.onclick = () => {
+        const table = btn.parentElement.querySelector('.hostname-table');
+        table.classList.toggle('show');
+        btn.textContent = table.classList.contains('show') ? 'Hide per-hostname breakdown ▲' : 'Show per-hostname breakdown ▼';
+      };
+    });
+  } catch (err) {
+    content.innerHTML = '<div class="empty-state"><h3>Error</h3></div>';
+  }
+};
+
+// Helpers
+function formatDate(d) {
+  if (!d) return '';
+  return new Date(d.endsWith('Z') ? d : d + 'Z').toLocaleString();
+}
+
+function esc(str) {
+  const el = document.createElement('span');
+  el.textContent = str;
+  return el.innerHTML;
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+services:
+  dnstrack:
+    build: .
+    container_name: dnstrack
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - dnstrack_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  dnstrack_data:

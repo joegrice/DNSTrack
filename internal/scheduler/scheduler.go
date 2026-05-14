@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"strings"
 	"sync"
 	"time"
 
@@ -131,29 +132,38 @@ func (s *Scheduler) RunTests() error {
 }
 
 func (s *Scheduler) testProvider(runID int64, provider config.Provider) {
-	ip := dns.PickIP(provider.IPs)
-	if ip == "" {
-		log.Printf("[scheduler] provider %s has no IPs, skipping", provider.Name)
-		return
+	// Convert configured record types to qtype constants
+	var recordTypes []uint16
+	for _, rt := range s.cfg.RecordTypes {
+		recordTypes = append(recordTypes, dns.StringToQType(rt))
 	}
 
-	// Warm up connection
-	dns.WarmUp(ip)
-
 	ctx := context.Background()
-	results := dns.ResolveWithWarmup(ctx, ip, s.cfg.Domains)
+	var results []dns.Result
+
+	if strings.ToLower(provider.Type) == "doh" && provider.DoHURL != "" {
+		results = dns.ResolveDoHWithWarmup(ctx, provider.DoHURL, s.cfg.Domains, recordTypes)
+	} else {
+		ip := dns.PickIP(provider.IPs)
+		if ip == "" {
+			log.Printf("[scheduler] provider %s has no IPs, skipping", provider.Name)
+			return
+		}
+		dns.WarmUp(ip)
+		results = dns.ResolveWithWarmup(ctx, ip, s.cfg.Domains, recordTypes)
+	}
 
 	for _, r := range results {
 		errMsg := ""
 		if !r.Success {
 			errMsg = r.Error
 		}
-		if err := s.store.InsertResult(runID, provider.Name, r.Domain, r.ResponseTimeMs, r.Success, errMsg); err != nil {
+		if err := s.store.InsertResult(runID, provider.Name, r.Domain, r.RecordType, r.ResponseTimeMs, r.Success, errMsg); err != nil {
 			log.Printf("[scheduler] insert result error: %v", err)
 		}
 	}
 
-	log.Printf("[scheduler] provider %s: %d domains tested", provider.Name, len(results))
+	log.Printf("[scheduler] provider %s: %d queries tested", provider.Name, len(results))
 }
 
 func (s *Scheduler) toCronExpr(interval string) string {

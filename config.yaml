@@ -21,6 +21,10 @@ domains:
   - anthropic.com
   - opencode.ai
 
+record_types:
+  - A
+  - AAAA
+
 providers:
   - name: AdGuard DNS
     ips:

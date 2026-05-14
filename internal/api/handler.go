@@ -30,6 +30,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/runs", h.getRuns)
 	r.Get("/history", h.getHistory)
 	r.Get("/providers", h.getProviders)
+	r.Get("/availability", h.getAvailability)
 	r.Post("/test", h.triggerTest)
 	r.Get("/settings", h.getSettings)
 	r.Put("/settings", h.updateSettings)
@@ -164,6 +165,22 @@ func (h *Handler) getHistory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, points)
+}
+
+func (h *Handler) getAvailability(w http.ResponseWriter, r *http.Request) {
+	hours := 24
+	if hrs := r.URL.Query().Get("hours"); hrs != "" {
+		if v, err := strconv.Atoi(hrs); err == nil && v > 0 && v <= 2160 {
+			hours = v
+		}
+	}
+
+	stats, err := h.store.GetAvailability(hours)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, stats)
 }
 
 func (h *Handler) getProviders(w http.ResponseWriter, r *http.Request) {

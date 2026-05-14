@@ -22,8 +22,9 @@ type Config struct {
 		Interval      string `yaml:"interval"`
 		RetentionDays int    `yaml:"retention_days"`
 	} `yaml:"schedule"`
-	Domains   []string   `yaml:"domains"`
-	Providers []Provider `yaml:"providers"`
+	Domains     []string   `yaml:"domains"`
+	RecordTypes []string   `yaml:"record_types"`
+	Providers   []Provider `yaml:"providers"`
 }
 
 func Load(path string) (*Config, error) {
@@ -45,6 +46,9 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Schedule.RetentionDays == 0 {
 		cfg.Schedule.RetentionDays = 90
+	}
+	if cfg.RecordTypes == nil || len(cfg.RecordTypes) == 0 {
+		cfg.RecordTypes = []string{"A"}
 	}
 
 	if len(cfg.Domains) == 0 {

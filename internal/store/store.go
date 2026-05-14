@@ -20,13 +20,14 @@ type Run struct {
 }
 
 type Result struct {
-	ID             int64   `json:"id"`
-	TestRunID      int64   `json:"test_run_id"`
-	Provider       string  `json:"provider"`
-	Domain         string  `json:"domain"`
-	ResponseTimeMs float64 `json:"response_time_ms"`
-	Success        bool    `json:"success"`
-	Error          *string `json:"error,omitempty"`
+	ID             int64     `json:"id"`
+	TestRunID      int64     `json:"test_run_id"`
+	Provider       string    `json:"provider"`
+	Domain         string    `json:"domain"`
+	RecordType     string    `json:"record_type"`
+	ResponseTimeMs float64   `json:"response_time_ms"`
+	Success        bool      `json:"success"`
+	Error          *string   `json:"error,omitempty"`
 	CreatedAt      time.Time `json:"created_at"`
 }
 
@@ -47,6 +48,7 @@ type ProviderResult struct {
 
 type HostnameResult struct {
 	Domain         string  `json:"domain"`
+	RecordType     string  `json:"record_type"`
 	ResponseTimeMs float64 `json:"response_time_ms"`
 }
 
@@ -96,6 +98,7 @@ func (s *Store) migrate() error {
 			test_run_id INTEGER NOT NULL REFERENCES test_runs(id),
 			provider TEXT NOT NULL,
 			domain TEXT NOT NULL,
+			record_type TEXT NOT NULL DEFAULT 'A',
 			response_time_ms REAL NOT NULL,
 			success INTEGER NOT NULL DEFAULT 1,
 			error TEXT,
@@ -115,6 +118,14 @@ func (s *Store) migrate() error {
 			return err
 		}
 	}
+
+	// Migrate existing databases: add record_type column if missing
+	var colCount int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('results') WHERE name='record_type'`).Scan(&colCount)
+	if err == nil && colCount == 0 {
+		_, _ = s.db.Exec(`ALTER TABLE results ADD COLUMN record_type TEXT NOT NULL DEFAULT 'A'`)
+	}
+
 	return nil
 }
 
@@ -126,7 +137,7 @@ func (s *Store) CreateRun() (int64, error) {
 	return res.LastInsertId()
 }
 
-func (s *Store) InsertResult(runID int64, provider, domain string, responseTimeMs float64, success bool, errMsg string) error {
+func (s *Store) InsertResult(runID int64, provider, domain, recordType string, responseTimeMs float64, success bool, errMsg string) error {
 	var errPtr *string
 	if errMsg != "" {
 		errPtr = &errMsg
@@ -135,10 +146,13 @@ func (s *Store) InsertResult(runID int64, provider, domain string, responseTimeM
 	if success {
 		sVal = 1
 	}
+	if recordType == "" {
+		recordType = "A"
+	}
 	responseTimeMs = math.Round(responseTimeMs*100) / 100
 	_, err := s.db.Exec(
-		`INSERT INTO results (test_run_id, provider, domain, response_time_ms, success, error, created_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`,
-		runID, provider, domain, responseTimeMs, sVal, errPtr,
+		`INSERT INTO results (test_run_id, provider, domain, record_type, response_time_ms, success, error, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+		runID, provider, domain, recordType, responseTimeMs, sVal, errPtr,
 	)
 	return err
 }
@@ -209,7 +223,7 @@ func (s *Store) getRunProviders(runID int64) ([]ProviderResult, error) {
 
 func (s *Store) buildProviderResult(runID int64, provider string) (*ProviderResult, error) {
 	rows, err := s.db.Query(
-		`SELECT domain, response_time_ms, success FROM results WHERE test_run_id = ? AND provider = ? ORDER BY response_time_ms`,
+		`SELECT domain, record_type, response_time_ms, success FROM results WHERE test_run_id = ? AND provider = ? ORDER BY response_time_ms`,
 		runID, provider,
 	)
 	if err != nil {
@@ -222,7 +236,7 @@ func (s *Store) buildProviderResult(runID int64, provider string) (*ProviderResu
 	for rows.Next() {
 		var hr HostnameResult
 		var success int
-		if err := rows.Scan(&hr.Domain, &hr.ResponseTimeMs, &success); err != nil {
+		if err := rows.Scan(&hr.Domain, &hr.RecordType, &hr.ResponseTimeMs, &success); err != nil {
 			return nil, err
 		}
 		pr.TotalTested++
@@ -361,6 +375,46 @@ func (s *Store) GetProviders() ([]string, error) {
 		providers = append(providers, p)
 	}
 	return providers, nil
+}
+
+type AvailabilityStat struct {
+	Total      int     `json:"total"`
+	Succeeded  int     `json:"succeeded"`
+	Percentage float64 `json:"percentage"`
+}
+
+func (s *Store) GetAvailability(hours int) (map[string]AvailabilityStat, error) {
+	rows, err := s.db.Query(
+		`SELECT provider, COUNT(*) as total, SUM(success) as succeeded
+		 FROM results
+		 WHERE created_at >= datetime('now', '-' || ? || ' hours')
+		 GROUP BY provider
+		 ORDER BY provider`,
+		fmt.Sprint(hours),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string]AvailabilityStat)
+	for rows.Next() {
+		var provider string
+		var total, succeeded int
+		if err := rows.Scan(&provider, &total, &succeeded); err != nil {
+			return nil, err
+		}
+		pct := 0.0
+		if total > 0 {
+			pct = math.Round(float64(succeeded)/float64(total)*10000) / 100
+		}
+		result[provider] = AvailabilityStat{
+			Total:      total,
+			Succeeded:  succeeded,
+			Percentage: pct,
+		}
+	}
+	return result, nil
 }
 
 func (s *Store) CleanupOld(days int) (int64, error) {

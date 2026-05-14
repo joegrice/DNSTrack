@@ -71,7 +71,7 @@ main{padding:1.5rem;max-width:1200px;margin:0 auto}
 <main>
   <div id="dashboard" class="page active">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
-      <h2 style="font-size:1.1rem">Latest Test Run</h2>
+      <h2 style="font-size:1.1rem">Latest</h2>
       <button class="btn" id="refresh-btn" onclick="runTest()">Run Test</button>
     </div>
     <div id="dashboard-content"></div>
@@ -157,6 +157,8 @@ async function loadDashboard() {
       return;
     }
 
+    data.providers.sort((a, b) => a.stats.avg_ms - b.stats.avg_ms);
+
     content.innerHTML = `
       <div class="run-timestamp">Run #${data.run_id} &mdash; ${formatDate(data.created_at)}</div>
       ${data.providers.map(p => renderProviderCard(p)).join('')}
@@ -187,6 +189,8 @@ async function runTest() {
       content.innerHTML = `<div class="empty-state"><h3>No results yet</h3><p>Click "Run Test" to start</p></div>`;
       return;
     }
+
+    data.providers.sort((a, b) => a.stats.avg_ms - b.stats.avg_ms);
 
     content.innerHTML = `
       <div class="run-timestamp">Run #${data.run_id} &mdash; ${formatDate(data.created_at)}</div>
@@ -368,9 +372,9 @@ function makeChartOptions(yTitle) {
       },
       y: {
         title: { display: true, text: yTitle, color: '#888' },
-        ticks: { color: '#888', callback: v => v + ' ms' },
+        ticks: { color: '#888', callback: v => v + ' ms', stepSize: 5 },
         grid: { color: '#2a2a4a' },
-        beginAtZero: true
+        beginAtZero: false
       }
     }
   };

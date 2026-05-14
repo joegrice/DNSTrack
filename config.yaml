@@ -18,6 +18,8 @@ domains:
   - amazon.com
   - tiktok.com
   - pinterest.com
+  - anthropic.com
+  - opencode.ai
 
 providers:
   - name: AdGuard DNS
@@ -53,6 +55,18 @@ providers:
       - 45.90.30.0:53
     type: udp
     doh_url: https://dns.nextdns.io
+
+  - name: Mullvad
+    ips:
+      - 194.242.2.2:53
+    type: udp
+    doh_url: https://dns.mullvad.net/dns-query
+
+  - name: DNSBunker
+    ips:
+      - 27.123.245.130:53
+    type: udp
+    doh_url: https://dnsbunker.org/dns-query
 
   - name: Google
     ips:

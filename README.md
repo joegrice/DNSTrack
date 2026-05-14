@@ -1,4 +1,4 @@
-# DNSTrack
+# dns-track
 
 Self-hosted DNS speed tracker. Monitors DNS resolution times across multiple providers and visualizes performance over time.
 

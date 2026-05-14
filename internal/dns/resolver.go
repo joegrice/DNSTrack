@@ -89,6 +89,8 @@ func ResolveWithWarmup(ctx context.Context, serverIP string, domains []string) [
 
 		r := ResolveUDP(serverIP, domain)
 		results = append(results, r)
+
+		time.Sleep(50 * time.Millisecond)
 	}
 
 	return results

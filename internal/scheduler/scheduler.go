@@ -21,19 +21,23 @@ type Scheduler struct {
 	entryID  cron.EntryID
 	mu       sync.Mutex
 	cronExpr string
+	stopCh   chan struct{}
 }
 
 func New(cfg *config.Config, st *store.Store) *Scheduler {
 	return &Scheduler{
-		cfg:   cfg,
-		store: st,
-		cron:  cron.New(),
+		cfg:    cfg,
+		store:  st,
+		cron:   cron.New(),
+		stopCh: make(chan struct{}),
 	}
 }
 
 func (s *Scheduler) Start() error {
 	cronExpr := s.cfg.Schedule.Interval
-	if dbExpr, err := s.store.GetSetting("cron"); err == nil && dbExpr != "" {
+	if dbExpr, err := s.store.GetSetting("cron"); err != nil {
+		log.Printf("[scheduler] error reading cron setting from db: %v", err)
+	} else if dbExpr != "" {
 		cronExpr = dbExpr
 	}
 	s.cronExpr = cronExpr
@@ -58,6 +62,7 @@ func (s *Scheduler) Start() error {
 }
 
 func (s *Scheduler) Stop() {
+	close(s.stopCh)
 	ctx := s.cron.Stop()
 	<-ctx.Done()
 }
@@ -160,13 +165,20 @@ func (s *Scheduler) toCronExpr(interval string) string {
 }
 
 func (s *Scheduler) cleanupLoop() {
+	ticker := time.NewTicker(1 * time.Hour)
+	defer ticker.Stop()
+
 	for {
-		time.Sleep(1 * time.Hour)
-		deleted, err := s.store.CleanupOld(s.cfg.Schedule.RetentionDays)
-		if err != nil {
-			log.Printf("[scheduler] cleanup error: %v", err)
-		} else if deleted > 0 {
-			log.Printf("[scheduler] cleaned up %d old results", deleted)
+		select {
+		case <-s.stopCh:
+			return
+		case <-ticker.C:
+			deleted, err := s.store.CleanupOld(s.cfg.Schedule.RetentionDays)
+			if err != nil {
+				log.Printf("[scheduler] cleanup error: %v", err)
+			} else if deleted > 0 {
+				log.Printf("[scheduler] cleaned up %d old results", deleted)
+			}
 		}
 	}
 }

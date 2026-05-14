@@ -111,6 +111,7 @@ func (h *Handler) getRuns(w http.ResponseWriter, r *http.Request) {
 	for _, run := range runs {
 		detail, err := h.store.GetRunDetail(run.ID)
 		if err != nil {
+			log.Printf("[api] error getting run detail for run %d: %v", run.ID, err)
 			continue
 		}
 		summaries = append(summaries, runSummary{

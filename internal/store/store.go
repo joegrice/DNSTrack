@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"math"
+	"sort"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -234,8 +235,8 @@ func (s *Store) buildProviderResult(runID int64, provider string) (*ProviderResu
 
 	if len(times) > 0 {
 		pr.Stats.AvgMs = average(times)
-		pr.Stats.MinMs = times[0]
-		pr.Stats.MaxMs = times[len(times)-1]
+		pr.Stats.MinMs = minVal(times)
+		pr.Stats.MaxMs = maxVal(times)
 		pr.Stats.MedianMs = median(times)
 	}
 
@@ -367,7 +368,14 @@ func (s *Store) CleanupOld(days int) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return res.RowsAffected()
+	deleted, _ := res.RowsAffected()
+
+	_, err = s.db.Exec(`DELETE FROM test_runs WHERE id NOT IN (SELECT DISTINCT test_run_id FROM results)`)
+	if err != nil {
+		return deleted, err
+	}
+
+	return deleted, nil
 }
 
 func (s *Store) GetSetting(key string) (string, error) {
@@ -395,13 +403,36 @@ func average(vals []float64) float64 {
 	return math.Round(sum/float64(len(vals))*100) / 100
 }
 
+func minVal(vals []float64) float64 {
+	m := vals[0]
+	for _, v := range vals[1:] {
+		if v < m {
+			m = v
+		}
+	}
+	return m
+}
+
+func maxVal(vals []float64) float64 {
+	m := vals[0]
+	for _, v := range vals[1:] {
+		if v > m {
+			m = v
+		}
+	}
+	return m
+}
+
 func median(vals []float64) float64 {
 	n := len(vals)
 	if n == 0 {
 		return 0
 	}
+	sorted := make([]float64, n)
+	copy(sorted, vals)
+	sort.Float64s(sorted)
 	if n%2 == 1 {
-		return vals[n/2]
+		return sorted[n/2]
 	}
-	return math.Round((vals[n/2-1]+vals[n/2])/2*100) / 100
+	return math.Round((sorted[n/2-1]+sorted[n/2])/2*100) / 100
 }

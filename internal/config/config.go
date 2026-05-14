@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 
 	"gopkg.in/yaml.v3"
@@ -44,6 +45,13 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Schedule.RetentionDays == 0 {
 		cfg.Schedule.RetentionDays = 90
+	}
+
+	if len(cfg.Domains) == 0 {
+		return nil, fmt.Errorf("config: at least one domain is required")
+	}
+	if len(cfg.Providers) == 0 {
+		return nil, fmt.Errorf("config: at least one provider is required")
 	}
 
 	return cfg, nil

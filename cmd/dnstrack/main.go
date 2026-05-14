@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/joe/dnstrack/internal/api"
 	"github.com/joe/dnstrack/internal/config"
@@ -53,18 +55,24 @@ func main() {
 	handler := api.New(st, sch, cfg)
 	srv := server.New(handler, cfg.Server.Port, *frontendDir)
 
-	// Graceful shutdown
 	go func() {
-		sig := make(chan os.Signal, 1)
-		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-		<-sig
-		log.Println("[main] shutting down...")
-		sch.Stop()
-		st.Close()
-		os.Exit(0)
+		if err := srv.Start(); err != nil {
+			log.Fatalf("server error: %v", err)
+		}
 	}()
 
-	if err := srv.Start(); err != nil {
-		log.Fatalf("server error: %v", err)
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	<-sig
+
+	log.Println("[main] shutting down...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Printf("[main] server shutdown error: %v", err)
 	}
+
+	sch.Stop()
+	st.Close()
 }

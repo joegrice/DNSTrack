@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -13,8 +14,8 @@ import (
 )
 
 type Server struct {
-	router chi.Router
-	port   int
+	httpServer *http.Server
+	port       int
 }
 
 func New(handler *api.Handler, port int, frontendDir string) *Server {
@@ -24,19 +25,27 @@ func New(handler *api.Handler, port int, frontendDir string) *Server {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RealIP)
 
-	// API routes
 	r.Mount("/api", handler.Routes())
 
-	// Frontend handler
 	r.Get("/*", serveFrontend(frontendDir))
 
-	return &Server{router: r, port: port}
+	return &Server{
+		httpServer: &http.Server{
+			Addr:    fmt.Sprintf(":%d", port),
+			Handler: r,
+		},
+		port: port,
+	}
 }
 
 func (s *Server) Start() error {
 	addr := fmt.Sprintf(":%d", s.port)
 	log.Printf("[server] listening on %s", addr)
-	return http.ListenAndServe(addr, s.router)
+	return s.httpServer.ListenAndServe()
+}
+
+func (s *Server) Shutdown(ctx context.Context) error {
+	return s.httpServer.Shutdown(ctx)
 }
 
 func serveFrontend(distDir string) http.HandlerFunc {
@@ -49,23 +58,22 @@ func serveFrontend(distDir string) http.HandlerFunc {
 		}
 	}
 
-	return func(w http.ResponseWriter, r *http.Request) {
-		if fileServer == nil {
-			w.Header().Set("Content-Type", "text/html")
-			w.Write([]byte(`<!DOCTYPE html><html><head><title>DNSTrack</title><style>body{font-family:monospace;padding:2rem;background:#1a1a2e;color:#e0e0e0;}code{background:#16213e;padding:2px 6px;border-radius:4px;}</style></head><body><h1>🐇 DNSTrack</h1><p>Frontend not built. Run <code>cd web && npm install && npm run build</code> to build the frontend.</p><p>API available at <a href="/api/runs/latest">/api/runs/latest</a></p></body></html>`))
-			return
+		return func(w http.ResponseWriter, r *http.Request) {
+			if fileServer == nil {
+				w.Header().Set("Content-Type", "text/html")
+				w.Write([]byte(`<!DOCTYPE html><html><head><title>DNSTrack</title><style>body{font-family:monospace;padding:2rem;background:#1a1a2e;color:#e0e0e0;}code{background:#16213e;padding:2px 6px;border-radius:4px;}</style></head><body><h1>DNSTrack</h1><p>Frontend not built. Run <code>cd web && npm install && npm run build</code> to build the frontend.</p><p>API available at <a href="/api/runs/latest">/api/runs/latest</a></p></body></html>`))
+				return
+			}
+
+			path := r.URL.Path
+			fullPath := filepath.Join(distDir, path)
+
+			if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+				r.URL.Path = "/"
+			}
+
+			fileServer.ServeHTTP(w, r)
 		}
-
-		// SPA fallback: if path doesn't match a static file, serve index.html
-		path := r.URL.Path
-		fullPath := filepath.Join(distDir, path)
-
-		if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-			r.URL.Path = "/"
-		}
-
-		fileServer.ServeHTTP(w, r)
-	}
 }
 
 
